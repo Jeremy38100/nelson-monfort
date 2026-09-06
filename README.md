@@ -1,21 +1,21 @@
 # Parole Locale
 
-Application web locale de transcription automatique de la parole (ASR/STT) et de traduction. Elle ne fait pas de TTS : le microphone est transcrit, puis le texte final est traduit.
+Local web application for automatic speech recognition (ASR/STT) and text translation. It does not perform TTS: it transcribes microphone audio and translates finalized text.
 
-Tout le traitement tourne sur le Mac : MLX/Metal pour Whisper et Ollama pour TranslateGemma. Aucune cle API, aucun service cloud payant et aucun audio transmis a un service distant.
+All inference runs on the Mac: MLX/Metal runs Whisper and Ollama runs the translation model. No API key, paid cloud service, or remote audio processing is required.
 
 ## Requirements
 
-- Mac Apple Silicon sous macOS 14 ou plus recent. L application est optimisee pour un MacBook Pro M5 Pro avec 64 Go de memoire unifiee.
-- Python 3.10+ natif ARM64. Le projet a ete verifie avec Python 3.13.
+- Apple Silicon Mac running macOS 14 or newer. The defaults target a MacBook Pro M5 Pro with 64 GB unified memory.
+- Native ARM64 Python 3.10+. Python 3.13 is the verified version.
 - Node.js 20.19+.
-- [Ollama](https://ollama.com/download) pour macOS.
+- [Ollama](https://ollama.com/download) for macOS.
 
-Il n y a pas de dependance systeme audio supplementaire : le navigateur envoie du PCM mono 16 kHz directement au backend.
+No additional system audio package is needed. The browser sends mono 16 kHz PCM directly to the backend.
 
 ## Installation
 
-Depuis un clone propre :
+From a clean clone:
 
 ```sh
 python3 -m venv .venv
@@ -25,60 +25,63 @@ pip install -r server/requirements.txt
 npm ci
 
 ollama pull translategemma:4b
-# Optionnel : meilleure qualite, davantage de memoire et de latence.
+# Optional: higher-quality translation with more memory use and latency.
 ollama pull translategemma:12b
+# Optional: lowest-latency translation presets.
+ollama pull qwen3.5:0.8b-mlx
+ollama pull qwen3:0.6b
 ```
 
-Le modele ASR par defaut est `mlx-community/whisper-large-v3-turbo`. Il est telecharge localement par `mlx-whisper` au premier lancement du backend et conserve dans le cache Hugging Face. Aucun token Hugging Face n est necessaire pour ce modele public.
+The default ASR model is `mlx-community/whisper-large-v3-turbo`. `mlx-whisper` downloads it locally on the first backend start and stores it in the Hugging Face cache. This public model does not require a Hugging Face token.
 
 ## Models
 
 ### ASR
 
-L interface propose deux modeles MLX compatibles avec les langues francaises, anglaises et japonaises :
+The UI provides two MLX ASR models that support French, English, and Japanese:
 
-| Modele | Usage |
+| Model | Use |
 | --- | --- |
-| `small` | Benchmark ou latence minimale |
-| `large-v3-turbo` | Defaut, meilleure qualite multilingue |
+| `small` | Benchmarking or minimum ASR latency |
+| `large-v3-turbo` | Default, best multilingual quality |
 
-Whisper detecte automatiquement la langue pour chaque segment. Il n y a aucune langue source globale forcee, donc une conversation peut passer du francais a l anglais puis au japonais.
+Whisper detects the source language independently for each finalized segment. No session-wide source language is forced, so a speaker can switch between French, English, and Japanese.
 
-### Traduction
+### Translation
 
-| Preset | Modele par defaut | Usage |
+| Preset | Default model | Use |
 | --- | --- | --- |
-| `FAST` | `translategemma:4b` | Defaut, faible latence |
-| `QUALITY` | `translategemma:12b` | Qualite maximale, plus lourd |
-| `Qwen 3.5 MLX` | `qwen3.5:0.8b-mlx` | Latence minimale, qualite de traduction inferieure |
-| `Qwen 3` | `qwen3:0.6b` | Latence minimale, qualite de traduction inferieure |
+| `Fast` | `translategemma:4b` | Default translation quality and latency balance |
+| `Quality` | `translategemma:12b` | Higher quality, more memory use and latency |
+| `Qwen 3.5 MLX` | `qwen3.5:0.8b-mlx` | Lowest latency, lower translation quality |
+| `Qwen 3` | `qwen3:0.6b` | Lowest latency, lower translation quality |
 
-TranslateGemma est appele uniquement une fois un segment ASR finalise. La langue source est affichee directement : aucune traduction inutile `fr -> fr`, `en -> en` ou `ja -> ja` n est envoyee a Ollama.
+Translation only starts for a finalized ASR segment. The detected source language is displayed directly, so no unnecessary `fr -> fr`, `en -> en`, or `ja -> ja` Ollama request is made. Ollama thinking is explicitly disabled and models stay loaded for 30 minutes after use.
 
 ## Development
 
-Lancer Ollama si le service n est pas deja demarre :
+Start Ollama if it is not already running:
 
 ```sh
 ollama serve
 ```
 
-Dans un premier terminal :
+In one terminal:
 
 ```sh
 source .venv/bin/activate
 uvicorn server.app:app --reload
 ```
 
-Dans un second terminal :
+In another terminal:
 
 ```sh
 npm run dev
 ```
 
-Ouvrir l URL Vite, habituellement `http://localhost:5173`, puis autoriser le microphone. Le proxy Vite transmet `/ws/transcribe` au backend FastAPI.
+Open the Vite URL, usually `http://localhost:5173`, and grant microphone access. The Vite proxy forwards `/ws/transcribe` to FastAPI.
 
-## Build Production
+## Production Build
 
 ```sh
 npm run build
@@ -86,25 +89,25 @@ source .venv/bin/activate
 uvicorn server.app:app
 ```
 
-Le backend sert alors `dist/` sur `http://127.0.0.1:8000`.
+The backend then serves `dist/` at `http://127.0.0.1:8000`.
 
 ## Configuration
 
-Les valeurs par defaut sont adaptees au Mac Apple Silicon cible.
+The defaults are tuned for the target Apple Silicon Mac.
 
-| Variable | Defaut | Usage |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `ASR_BACKEND` | `mlx` | Backend ASR local. Seul MLX est active dans cette version. |
-| `WHISPER_MODEL` | `large-v3-turbo` | Modele ASR charge au demarrage. |
-| `OLLAMA_MODEL` | `translategemma:4b` | Modele du preset FAST. |
-| `OLLAMA_QUALITY_MODEL` | `translategemma:12b` | Modele du preset QUALITY. |
-| `OLLAMA_QWEN_MLX_MODEL` | `qwen3.5:0.8b-mlx` | Modele du preset Qwen 3.5 MLX. |
-| `OLLAMA_QWEN_MODEL` | `qwen3:0.6b` | Modele du preset Qwen 3. |
-| `TRANSLATION_CONCURRENCY` | `1` | Requetes Ollama simultanees. Garder `1` reduit la contention sur un seul modele local. |
-| `OLLAMA_URL` | `http://127.0.0.1:11434` | URL du serveur Ollama local. |
-| `LOG_LEVEL` | `INFO` | Niveau des logs de latence. |
+| `ASR_BACKEND` | `mlx` | Local ASR backend. Only MLX is enabled in this version. |
+| `WHISPER_MODEL` | `large-v3-turbo` | ASR model loaded at backend startup. |
+| `OLLAMA_MODEL` | `translategemma:4b` | `Fast` translation preset model. |
+| `OLLAMA_QUALITY_MODEL` | `translategemma:12b` | `Quality` translation preset model. |
+| `OLLAMA_QWEN_MLX_MODEL` | `qwen3.5:0.8b-mlx` | `Qwen 3.5 MLX` preset model. |
+| `OLLAMA_QWEN_MODEL` | `qwen3:0.6b` | `Qwen 3` preset model. |
+| `TRANSLATION_CONCURRENCY` | `1` | Concurrent Ollama requests. Keep `1` to avoid contention on one local model. |
+| `OLLAMA_URL` | `http://127.0.0.1:11434` | Local Ollama server URL. |
+| `LOG_LEVEL` | `INFO` | Latency log level. |
 
-Exemple :
+Example:
 
 ```sh
 WHISPER_MODEL=small OLLAMA_MODEL=translategemma:4b uvicorn server.app:app --reload
@@ -114,19 +117,21 @@ WHISPER_MODEL=small OLLAMA_MODEL=translategemma:4b uvicorn server.app:app --relo
 
 ```text
 Microphone getUserMedia
-  -> AudioWorklet (mono PCM 16 kHz)
+  -> AudioWorklet (mono PCM 16 kHz, RMS noise gate)
   -> WebSocket
-  -> VAD WebRTC (trames 20 ms, pauses de 500 ms)
+  -> WebRTC VAD (20 ms frames, 500 ms end-of-utterance pause)
   -> Whisper Large v3 Turbo / MLX / Metal
-  -> transcript.partial ou transcript.final
-  -> TranslateGemma / Ollama seulement pour les finals
+  -> transcript.partial or transcript.final
+  -> TranslateGemma or Qwen / Ollama for finals only
   -> WebSocket
   -> UI
 ```
 
-Les trames audio sont decoupees par VAD, avec 300 ms de pre-roll. Un segment continu est borne a huit secondes et conserve un overlap court avec deduplication exacte pour limiter la latence sans couper les mots. La file ASR par client est bornee a trois travaux : les partials excedentaires sont abandonnes, les finals appliquent du backpressure plutot que de faire croitre la memoire.
+The live UI has one fixed block per selected target language. Each block keeps its language order, concatenates recent text, scrolls to the latest content, and retains the configured number of finalized segments. The live footer exposes the microphone RMS level and an adjustable noise threshold. Audio below that threshold is sent as silence so VAD can finish speech cleanly instead of transcribing low-level noise.
 
-## Messages WebSocket
+The VAD keeps 300 ms of pre-roll. Continuous speech is capped at eight seconds and preserves a short overlap with exact deduplication, limiting latency without cutting words. Each client ASR queue is bounded to three jobs: excess partials are dropped, while finals apply backpressure instead of growing memory without limit.
+
+## WebSocket Messages
 
 ```json
 {"type":"transcript.partial","segmentId":"3","text":"I want to go","language":"en","isFinal":false}
@@ -134,18 +139,18 @@ Les trames audio sont decoupees par VAD, avec 300 ms de pre-roll. Un segment con
 {"type":"translation","segmentId":"3","sourceLanguage":"en","targetLanguage":"ja","text":"日本に行きたいです。","isFinal":true}
 ```
 
-Les translations gardent le meme `segmentId`; le frontend met donc a jour le segment au lieu d ajouter une ligne a chaque partial.
+Translations use the same `segmentId`, so the frontend updates a segment instead of adding a new line for each partial.
 
-## Metal Et Latence
+## Metal And Latency
 
-Verifier MLX/Metal :
+Verify MLX/Metal:
 
 ```sh
 source .venv/bin/activate
 python -c "import mlx.core as mx; print('Metal:', mx.metal.is_available()); print('Device:', mx.default_device())"
 ```
 
-Le resultat attendu est `Metal: True` et un peripherique `gpu`. Au demarrage, le backend logge par exemple :
+The expected result is `Metal: True` and a `gpu` device. The backend logs, for example:
 
 ```text
 ASR backend=mlx model=large-v3-turbo warmed in 4.21s
@@ -154,20 +159,20 @@ Translation segment=3 target=fr model=qwen3:0.6b queue=0.00s request=0.06s ollam
 End-to-end segment=3 target=fr latency=0.61s
 ```
 
-`RTF` est le rapport temps de traitement / duree audio; inferieur a 1 signifie que l ASR est plus rapide que le temps reel. Les logs de traduction separent l attente de semaphore (`queue`), le temps HTTP (`request`), le chargement du modele (`load`), l evaluation du prompt (`prompt`) et la generation (`generation`). Ces mesures identifient si le goulot est l ASR, Ollama a froid, les tokens generes ou une concurrence excessive.
+`RTF` is processing time divided by audio duration; below `1` means ASR is faster than real time. Translation logs separate semaphore wait time (`queue`), HTTP time (`request`), model loading (`load`), prompt evaluation (`prompt`), and generation (`generation`). They identify whether the bottleneck is ASR, a cold Ollama model, token generation, or excess concurrent work.
 
-## Benchmark ASR
+## ASR Benchmark
 
-Le benchmark compare les deux modeles sur un meme WAV PCM16 mono 16 kHz :
+The benchmark compares both ASR models on the same mono PCM16 16 kHz WAV file:
 
 ```sh
 source .venv/bin/activate
-python -m server.benchmark chemin/vers/extrait-16khz-mono.wav
+python -m server.benchmark path/to/16khz-mono-sample.wav
 ```
 
-Il affiche la duree audio, le temps de transcription, le RTF et la langue detectee. L abstraction `ASREngine` dans `server/asr.py` isole le backend actuel `WhisperMLXEngine`; une future implementation `Qwen3ASREngine` peut reutiliser la meme pipeline VAD/WebSocket sans modifier le reste du backend.
+It reports audio duration, transcription duration, RTF, and detected language. The `ASREngine` abstraction in `server/asr.py` isolates `WhisperMLXEngine`, so a future `Qwen3ASREngine` can reuse the VAD/WebSocket pipeline without changing the rest of the backend.
 
-## Tests
+## Checks
 
 ```sh
 source .venv/bin/activate
@@ -176,15 +181,15 @@ python -m unittest server.test_pipeline
 npm run build
 ```
 
-Les tests couvrent les langues cibles multiples, l absence de traduction vers la source, le changement de langue entre segments, les messages partial/final, le VAD, la deduplication, la configuration ASR et une erreur Ollama.
+The tests cover multiple targets, skipping translation into the source language, changing source language between segments, partial/final message shapes, VAD, deduplication, ASR model configuration, and Ollama failures.
 
 ## Troubleshooting
 
-| Probleme | Resolution |
+| Problem | Resolution |
 | --- | --- |
-| Microphone non autorise | Autoriser le navigateur a utiliser le microphone, puis recharger la page. |
-| Ollama absent | Installer Ollama puis lancer `ollama serve`. |
-| Modele Ollama absent | Executer `ollama pull translategemma:4b`; pour QUALITY, `ollama pull translategemma:12b`. |
-| Modele Whisper absent | Laisser le premier demarrage terminer le telechargement du modele MLX; verifier la connexion reseau initiale et l espace disque. |
-| MLX ou Metal indisponible | Utiliser un Python ARM64 natif sur macOS Apple Silicon, puis lancer la commande de verification Metal ci-dessus. |
-| WebSocket inaccessible | Verifier que Uvicorn tourne sur le port 8000 et que Vite est lance depuis ce projet, ou utiliser directement le build sur le port 8000. |
+| Microphone is denied | Grant the browser microphone permission, then reload the page. |
+| Ollama is unavailable | Install Ollama, then run `ollama serve`. |
+| An Ollama model is missing | Run the matching `ollama pull` command from Installation. |
+| Whisper model is missing | Let the first backend startup finish downloading the MLX model; check the initial network connection and free disk space. |
+| MLX or Metal is unavailable | Use native ARM64 Python on Apple Silicon, then run the Metal verification command above. |
+| WebSocket is unreachable | Check that Uvicorn is running on port 8000 and Vite was launched from this project, or use the production build on port 8000. |
