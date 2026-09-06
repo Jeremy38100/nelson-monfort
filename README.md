@@ -1,4 +1,4 @@
-# Parole Locale
+# NelsonMonfort
 
 Local web application for automatic speech recognition (ASR/STT) and text translation. It does not perform TTS: it transcribes microphone audio and translates finalized text.
 
