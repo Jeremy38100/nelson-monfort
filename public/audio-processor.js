@@ -5,7 +5,7 @@ class PcmCaptureProcessor extends AudioWorkletProcessor {
     this.inputOffset = 0
     this.frame = new Int16Array(320) // 20 ms at 16 kHz.
     this.frameOffset = 0
-    this.threshold = 0.008
+    this.threshold = 0.015
     this.port.onmessage = ({ data }) => {
       if (data.type === 'threshold') this.threshold = data.value
     }

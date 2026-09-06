@@ -15,11 +15,186 @@ fieldset legend { margin-bottom: 14px; }
 .language:has(input:checked) { background: #171717; border-color: #171717; color: #fff; }.language input { accent-color: #fff; margin: 0 7px 0 0; }
 .start { background: #171717; border: 2px solid #171717; color: #fff; cursor: pointer; font-size: 16px; font-weight: 700; padding: 14px 20px; }.start:hover { background: #fff; color: #171717; }.start:disabled { cursor: wait; opacity: .45; }
 .error, .dictation-error { color: #a00; font-size: 13px; margin: -12px 0 0; }
-.dictation { display: flex; flex-direction: column; gap: 12px; height: 100dvh; overflow: hidden; padding: 42px; }
-.dictation-panel { border: 4px solid #171717; display: grid; flex: 1; min-height: 0; overflow: hidden; position: relative; }
-.language-block { align-items: center; display: flex; flex-direction: column; min-height: 0; overflow: hidden; padding: 18px 12%; text-align: center; }.language-block + .language-block { border-top: 1px solid #d0d0d0; }
-.flag { font-family: system-ui, sans-serif; font-size: 20px; line-height: 1; margin-bottom: 7px; }.row-label { color: #666; font-size: 10px !important; margin: 0 0 7px; text-transform: uppercase; }.language-history { flex: 1; min-height: 0; overflow-y: auto; scrollbar-color: #171717 #fff; width: 100%; }.language-history p { font-size: clamp(14px, 1.2vw, 24px); line-height: 1.35; margin: 0; }.language-history .partial { color: #777; }.waiting { color: #777; font-size: 15px !important; margin: 0 !important; text-align: center; }
-.dictation-stop { background: #fff; border: 1px solid #aaa; color: #171717; cursor: pointer; font-size: 12px; padding: 7px 10px; position: absolute; right: 12px; top: 12px; z-index: 1; }.dictation-stop:hover { background: #171717; color: #fff; }
-.live-meter { align-items: center; display: flex; font-size: 12px; gap: 12px; min-height: 34px; }.meter-track { background: #e5e5e5; flex: 1; height: 8px; overflow: visible; position: relative; }.meter-track i { background: #171717; display: block; height: 100%; max-width: 100%; transition: width .08s; }.meter-track b { background: #b00020; height: 16px; position: absolute; top: -4px; width: 2px; }.live-meter label { align-items: center; display: flex; gap: 8px; }.live-meter input { accent-color: #171717; width: 110px; }.live-meter output { min-width: 38px; text-align: right; }
-.dictation-error { bottom: 52px; left: 50%; position: fixed; transform: translateX(-50%); }
-@media (max-width: 600px) { .setup { padding-top: 42px; }.languages { grid-template-columns: repeat(2, 1fr); }.dictation { padding: 16px; }.dictation-panel { border-width: 3px; }.language-block { padding: 14px 8%; }.language-history p { font-size: clamp(14px, 4.4vw, 21px); }.flag { margin-bottom: 6px; }.live-meter { flex-wrap: wrap; }.meter-track { min-width: 100%; order: 3; }.live-meter label { flex: 1; justify-content: space-between; }.live-meter input { width: 140px; } }
+/* Dictation / Live Ceremony Streaming View */
+.dictation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100dvh;
+  overflow: hidden;
+  padding: clamp(8px, 1.5vh, 20px) clamp(10px, 1.5vw, 24px);
+}
+.dictation-panel {
+  border: 4px solid #171717;
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  border-radius: 4px;
+}
+.language-block {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: clamp(8px, 1.2vh, 18px) clamp(16px, 3.5vw, 64px);
+  text-align: center;
+}
+.language-block + .language-block {
+  border-top: 3px solid #171717;
+}
+.block-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: clamp(4px, 0.8vh, 10px);
+  user-select: none;
+}
+.flag {
+  font-family: system-ui, sans-serif;
+  font-size: clamp(18px, 2vw, 26px);
+  line-height: 1;
+}
+.row-label {
+  color: #555;
+  font-size: clamp(11px, 0.9vw, 15px) !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0 !important;
+  text-transform: uppercase;
+}
+.language-history {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  justify-content: center;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-color: #171717 #fff;
+  width: 100%;
+}
+.language-history p {
+  /* Dynamically scales with block count, fontScale, and viewport */
+  font-size: clamp(
+    20px,
+    calc((68vh / var(--block-count, 2) / 2.6) * var(--font-scale, 1)),
+    clamp(28px, 4.4vw, 68px)
+  );
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0;
+  max-width: 100%;
+  word-break: break-word;
+}
+.language-history .partial {
+  color: #666;
+  font-weight: 400;
+}
+.waiting {
+  color: #888;
+  font-style: italic;
+  font-size: clamp(16px, 1.6vw, 24px) !important;
+  margin: 0 !important;
+  text-align: center;
+}
+
+/* Controls */
+.dictation-controls {
+  display: flex;
+  gap: 6px;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 10;
+}
+.dictation-btn {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1.5px solid #171717;
+  border-radius: 3px;
+  color: #171717;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 12px;
+  backdrop-filter: blur(4px);
+  transition: background .12s, color .12s;
+}
+.dictation-btn:hover {
+  background: #171717;
+  color: #fff;
+}
+.dictation-stop {
+  background: #171717;
+  color: #fff;
+}
+.dictation-stop:hover {
+  background: #b00020;
+  border-color: #b00020;
+}
+
+/* Audio Meter */
+.live-meter {
+  align-items: center;
+  display: flex;
+  font-size: 12px;
+  gap: 12px;
+  min-height: 30px;
+}
+.meter-track {
+  background: #e5e5e5;
+  flex: 1;
+  height: 8px;
+  overflow: visible;
+  position: relative;
+}
+.meter-track i {
+  background: #171717;
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  transition: width .08s;
+}
+.meter-track b {
+  background: #b00020;
+  height: 16px;
+  position: absolute;
+  top: -4px;
+  width: 2px;
+}
+.live-meter label {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+.live-meter input {
+  accent-color: #171717;
+  width: 110px;
+}
+.live-meter output {
+  min-width: 38px;
+  text-align: right;
+}
+.dictation-error {
+  bottom: 48px;
+  left: 50%;
+  position: fixed;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 600px) {
+  .setup { padding-top: 42px; }
+  .languages { grid-template-columns: repeat(2, 1fr); }
+  .dictation { padding: 8px; }
+  .dictation-panel { border-width: 3px; }
+  .language-block { padding: 10px 12px; }
+  .language-history p { font-size: clamp(18px, 5.5vw, 28px); }
+  .live-meter { flex-wrap: wrap; }
+  .meter-track { min-width: 100%; order: 3; }
+  .live-meter label { flex: 1; justify-content: space-between; }
+  .live-meter input { width: 140px; }
+}

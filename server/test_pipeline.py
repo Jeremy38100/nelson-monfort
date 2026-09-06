@@ -3,8 +3,15 @@ import unittest
 
 import httpx
 
-from server.app import TranslationError, transcript_message, translate, translation_message, translation_prompt, translation_targets
-from server.asr import WhisperMLXEngine
+from server.app import (
+    TranslationError,
+    transcript_message,
+    translate,
+    translation_message,
+    translation_prompt,
+    translation_targets,
+)
+from server.asr import WhisperMLXEngine, create_asr_engine
 from server.streaming import FRAME_BYTES, AudioJob, VoiceSegmenter, trim_overlap
 
 
@@ -46,18 +53,36 @@ class PipelineTests(unittest.TestCase):
     def test_partial_and_final_messages_share_segment(self):
         partial = AudioJob("42", b"", False, False, 0)
         final = AudioJob("42", b"", True, False, 0)
-        self.assertEqual(transcript_message(partial, "I want", "en"), {
-            "type": "transcript.partial", "segmentId": "42", "text": "I want", "language": "en", "isFinal": False,
-        })
-        self.assertEqual(transcript_message(final, "I want to go", "en")["type"], "transcript.final")
-        self.assertEqual(translation_message("42", "en", "ja", "日本に行きたいです。"), {
-            "type": "translation", "segmentId": "42", "sourceLanguage": "en", "targetLanguage": "ja",
-            "text": "日本に行きたいです。", "isFinal": True,
-        })
+        self.assertEqual(
+            transcript_message(partial, "I want", "en"),
+            {
+                "type": "transcript.partial",
+                "segmentId": "42",
+                "text": "I want",
+                "language": "en",
+                "isFinal": False,
+            },
+        )
+        self.assertEqual(
+            transcript_message(final, "I want to go", "en")["type"], "transcript.final"
+        )
+        self.assertEqual(
+            translation_message("42", "en", "ja", "日本に行きたいです。"),
+            {
+                "type": "translation",
+                "segmentId": "42",
+                "sourceLanguage": "en",
+                "targetLanguage": "ja",
+                "text": "日本に行きたいです。",
+                "isFinal": True,
+            },
+        )
 
     def test_source_language_can_change_between_segments(self):
         first = transcript_message(AudioJob("1", b"", True, False, 0), "Bonjour", "fr")
-        second = transcript_message(AudioJob("2", b"", True, False, 0), "明日は東京に行きます。", "ja")
+        second = transcript_message(
+            AudioJob("2", b"", True, False, 0), "明日は東京に行きます。", "ja"
+        )
         self.assertEqual((first["language"], second["language"]), ("fr", "ja"))
 
     def test_vad_emits_partial_then_final(self):
@@ -68,7 +93,9 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual({job.segment_id for job in jobs}, {"0"})
 
     def test_overlap_deduplication(self):
-        self.assertEqual(trim_overlap("I want to go to", "to Japan tomorrow"), "Japan tomorrow")
+        self.assertEqual(
+            trim_overlap("I want to go to", "to Japan tomorrow"), "Japan tomorrow"
+        )
         self.assertEqual(trim_overlap("Bonjour", "Actually, hello"), "Actually, hello")
 
     def test_translation_prompt_is_restrictive_and_japanese_is_scripted(self):
@@ -78,18 +105,26 @@ class PipelineTests(unittest.TestCase):
 
     def test_ollama_connection_error_is_clean(self):
         with self.assertRaises(TranslationError):
-            asyncio.run(translate(FailingOllama(), "Bonjour", "fr", "en", "translategemma:4b"))
+            asyncio.run(
+                translate(FailingOllama(), "Bonjour", "fr", "en", "translategemma:4b")
+            )
 
     def test_translation_disables_thinking_and_keeps_model_warm(self):
         client = SuccessfulOllama()
-        text, stats = asyncio.run(translate(client, "Bonjour", "fr", "en", "qwen3:0.6b"))
+        text, stats = asyncio.run(
+            translate(client, "Bonjour", "fr", "en", "qwen3:0.6b")
+        )
         self.assertEqual((text, stats["eval_count"]), ("Hello", 1))
         self.assertEqual(client.payload["think"], False)
-        self.assertEqual(client.payload["keep_alive"], "30m")
+        self.assertEqual(client.payload["keep_alive"], "5m")
 
     def test_model_configuration_rejects_unknown_model(self):
         with self.assertRaises(ValueError):
             WhisperMLXEngine("unknown")
+        with self.assertRaises(ValueError):
+            create_asr_engine("unknown_backend", "small")
+        with self.assertRaises(ValueError):
+            create_asr_engine("faster-whisper", "unknown_model")
 
 
 if __name__ == "__main__":

@@ -2,14 +2,14 @@
 
 Local web application for automatic speech recognition (ASR/STT) and text translation. It does not perform TTS: it transcribes microphone audio and translates finalized text.
 
-All inference runs on the Mac: MLX/Metal runs Whisper and Ollama runs the translation model. No API key, paid cloud service, or remote audio processing is required.
+All inference runs locally: on Apple Silicon Mac with MLX/Metal, and on Windows/Linux with CUDA via `faster-whisper`. Ollama runs the translation model. No API key, paid cloud service, or remote audio processing is required.
 
 ## Requirements
 
-- Apple Silicon Mac running macOS 14 or newer. The defaults target a MacBook Pro M5 Pro with 64 GB unified memory.
-- Native ARM64 Python 3.10+. Python 3.13 is the verified version.
-- Node.js 20.19+.
-- [Ollama](https://ollama.com/download) for macOS.
+- **macOS** (Apple Silicon, macOS 14+) OR **Windows 10/11** (NVIDIA GPU recommended) / Linux.
+- Python 3.10+.
+- Node.js 20+.
+- [Ollama](https://ollama.com/download).
 
 No additional system audio package is needed. The browser sends mono 16 kHz PCM directly to the backend.
 
@@ -17,22 +17,30 @@ No additional system audio package is needed. The browser sends mono 16 kHz PCM 
 
 From a clean clone:
 
+**macOS / Linux:**
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r server/requirements.txt
-
 npm ci
-
-ollama pull translategemma:4b
-# Optional: higher-quality translation with more memory use and latency.
-ollama pull translategemma:12b
-# Optional: lowest-latency translation presets.
-ollama pull qwen3.5:0.8b-mlx
-ollama pull qwen3:0.6b
 ```
 
-The default ASR model is `mlx-community/whisper-large-v3-turbo`. `mlx-whisper` downloads it locally on the first backend start and stores it in the Hugging Face cache. This public model does not require a Hugging Face token.
+**Windows (PowerShell):**
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r server/requirements.txt
+npm install
+```
+
+Pull Ollama models:
+```sh
+ollama pull qwen3:0.6b
+# Optional:
+ollama pull translategemma:4b
+```
+
+The default ASR model is `large-v3-turbo` (`mlx-community/whisper-large-v3-turbo` on macOS MLX, or `Systran/faster-whisper-large-v3-turbo` on Windows/CUDA). It is downloaded locally on the first backend start and stored in the Hugging Face cache. This public model does not require a Hugging Face token.
 
 ## Models
 
@@ -93,11 +101,11 @@ The backend then serves `dist/` at `http://127.0.0.1:8000`.
 
 ## Configuration
 
-The defaults are tuned for the target Apple Silicon Mac.
+The defaults are tuned automatically for Apple Silicon Mac (`mlx`) or Windows/Linux (`faster-whisper`).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ASR_BACKEND` | `mlx` | Local ASR backend. Only MLX is enabled in this version. |
+| `ASR_BACKEND` | `auto` (`mlx` on macOS, `faster-whisper` on Windows/Linux) | Local ASR backend. |
 | `WHISPER_MODEL` | `large-v3-turbo` | ASR model loaded at backend startup. |
 | `OLLAMA_MODEL` | `translategemma:4b` | `Fast` translation preset model. |
 | `OLLAMA_QUALITY_MODEL` | `translategemma:12b` | `Quality` translation preset model. |

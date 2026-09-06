@@ -12,33 +12,43 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 
 try:
-    from server.asr import ASR_MODELS, WhisperMLXEngine
+    from server.asr import ASR_MODELS, WhisperMLXEngine, create_asr_engine
     from server.streaming import FRAME_BYTES, AudioJob, VoiceSegmenter, trim_overlap
 except ModuleNotFoundError:  # Supports `python server/app.py --check` too.
-    from asr import ASR_MODELS, WhisperMLXEngine
+    from asr import ASR_MODELS, WhisperMLXEngine, create_asr_engine
     from streaming import FRAME_BYTES, AudioJob, VoiceSegmenter, trim_overlap
 
 LOG = logging.getLogger("parole")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(message)s")
 
 LANGUAGES = {
-    "fr": "French", "en": "English", "es": "Spanish", "de": "German",
-    "it": "Italian", "pt": "Portuguese", "nl": "Dutch", "ja": "Japanese",
-    "ko": "Korean", "zh": "Chinese", "ar": "Arabic", "ru": "Russian",
+    "fr": "French",
+    "en": "English",
+    "es": "Spanish",
+    "de": "German",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "nl": "Dutch",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "zh": "Chinese",
+    "ar": "Arabic",
+    "ru": "Russian",
 }
-ASR_BACKEND = os.getenv("ASR_BACKEND", "mlx")
+DEFAULT_ASR_BACKEND = "mlx" if sys.platform == "darwin" else "faster-whisper"
+ASR_BACKEND = os.getenv("ASR_BACKEND", DEFAULT_ASR_BACKEND)
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "large-v3-turbo")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "translategemma:4b")
-OLLAMA_QUALITY_MODEL = os.getenv("OLLAMA_QUALITY_MODEL", "translategemma:12b")
-OLLAMA_QWEN_MLX_MODEL = os.getenv("OLLAMA_QWEN_MLX_MODEL", "qwen3.5:0.8b-mlx")
+OLLAMA_QUALITY_MODEL = os.getenv("OLLAMA_QUALITY_MODEL", "translategemma:4b")
+OLLAMA_QWEN_4B_MODEL = os.getenv("OLLAMA_QWEN_4B_MODEL", "qwen3.5:4b")
 OLLAMA_QWEN_MODEL = os.getenv("OLLAMA_QWEN_MODEL", "qwen3:0.6b")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 TRANSLATION_CONCURRENCY = int(os.getenv("TRANSLATION_CONCURRENCY", "1"))
 TRANSLATION_PRESETS = {
-    "fast": {"label": "Fast", "model": OLLAMA_MODEL},
-    "quality": {"label": "Quality", "model": OLLAMA_QUALITY_MODEL},
-    "qwen-mlx": {"label": "Qwen 3.5 MLX", "model": OLLAMA_QWEN_MLX_MODEL},
-    "qwen": {"label": "Qwen 3", "model": OLLAMA_QWEN_MODEL},
+    "fast": {"label": "TranslateGemma 4B", "model": OLLAMA_MODEL},
+    "quality": {"label": "Quality (Gemma 4B)", "model": OLLAMA_QUALITY_MODEL},
+    "qwen-4b": {"label": "Qwen 3.5 4B", "model": OLLAMA_QWEN_4B_MODEL},
+    "qwen": {"label": "Qwen 3 (0.6B Ultra-rapide)", "model": OLLAMA_QWEN_MODEL},
 }
 
 
@@ -51,7 +61,11 @@ def translation_targets(source: str, targets: list[str]) -> list[str]:
 
 
 def translation_prompt(text: str, source: str, target: str) -> str:
-    japanese_instruction = " Use Japanese script, never romanization." if target == "ja" else ""
+    japanese_instruction = (
+        " Use Japanese script, never romanization. Always use polite form (丁寧語, teineigo / desu-masu form)."
+        if target == "ja"
+        else ""
+    )
     return (
         f"Translate the following text from {LANGUAGES.get(source, source)} to {LANGUAGES[target]}. "
         "Return only the translated text. Preserve meaning, tone, names, numbers, and punctuation. "
@@ -87,10 +101,14 @@ async def ollama_models(client: httpx.AsyncClient) -> set[str]:
         response.raise_for_status()
         return {model["name"] for model in response.json().get("models", [])}
     except httpx.HTTPError as error:
-        raise TranslationError("Ollama est inaccessible. Lancez `ollama serve`.") from error
+        raise TranslationError(
+            "Ollama est inaccessible. Lancez `ollama serve`."
+        ) from error
 
 
-async def translate(client: httpx.AsyncClient, text: str, source: str, target: str, model: str) -> tuple[str, dict]:
+async def translate(
+    client: httpx.AsyncClient, text: str, source: str, target: str, model: str
+) -> tuple[str, dict]:
     try:
         response = await client.post(
             f"{OLLAMA_URL}/api/generate",
@@ -99,7 +117,7 @@ async def translate(client: httpx.AsyncClient, text: str, source: str, target: s
                 "prompt": translation_prompt(text, source, target),
                 "stream": False,
                 "think": False,
-                "keep_alive": "30m",
+                "keep_alive": "5m",
                 "options": {"temperature": 0},
             },
         )
@@ -107,11 +125,15 @@ async def translate(client: httpx.AsyncClient, text: str, source: str, target: s
         payload = response.json()
         translated = payload.get("response", "").strip()
     except httpx.ConnectError as error:
-        raise TranslationError("Ollama est inaccessible. Lancez `ollama serve`.") from error
+        raise TranslationError(
+            "Ollama est inaccessible. Lancez `ollama serve`."
+        ) from error
     except httpx.TimeoutException as error:
         raise TranslationError("La traduction Ollama a expire.") from error
     except httpx.HTTPStatusError as error:
-        raise TranslationError(f"Le modele Ollama `{model}` est absent ou indisponible.") from error
+        raise TranslationError(
+            f"Le modele Ollama `{model}` est absent ou indisponible."
+        ) from error
     except httpx.HTTPError as error:
         raise TranslationError("La traduction Ollama a echoue.") from error
     if not translated:
@@ -120,12 +142,10 @@ async def translate(client: httpx.AsyncClient, text: str, source: str, target: s
 
 
 async def select_asr(app: FastAPI, model_id: str) -> None:
-    if ASR_BACKEND != "mlx":
-        raise ValueError("Seul ASR_BACKEND=mlx est disponible dans cette version.")
     async with app.state.asr_lock:
         if app.state.asr.model_id == model_id:
             return
-        engine = WhisperMLXEngine(model_id)
+        engine = create_asr_engine(ASR_BACKEND, model_id)
         await asyncio.to_thread(engine.warmup)
         app.state.asr = engine
 
@@ -160,19 +180,25 @@ class LiveSession:
         preset = command.get("translationPreset", "fast")
         if preset not in TRANSLATION_PRESETS:
             raise ValueError("Preset de traduction non pris en charge.")
-        self.targets = [code for code in command.get("targets", []) if code in LANGUAGES]
+        self.targets = [
+            code for code in command.get("targets", []) if code in LANGUAGES
+        ]
         await select_asr(self.app, requested_model)
         self.translation_model = TRANSLATION_PRESETS[preset]["model"]
-        await self.send({
-            "type": "session.ready",
-            "asrBackend": ASR_BACKEND,
-            "asrModel": requested_model,
-            "translationModel": self.translation_model,
-        })
+        await self.send(
+            {
+                "type": "session.ready",
+                "asrBackend": ASR_BACKEND,
+                "asrModel": requested_model,
+                "translationModel": self.translation_model,
+            }
+        )
 
     async def enqueue(self, job: AudioJob) -> None:
         if job.is_final:
-            await self.jobs.put(job)  # Bounded backpressure beats an unbounded audio queue.
+            await self.jobs.put(
+                job
+            )  # Bounded backpressure beats an unbounded audio queue.
         elif not self.jobs.full():
             self.jobs.put_nowait(job)
 
@@ -194,14 +220,29 @@ class LiveSession:
                     self.previous_final = text
                 LOG.info(
                     "ASR segment=%s audio=%.2fs processing=%.2fs RTF=%.2f language=%s final=%s",
-                    job.segment_id, duration, elapsed, rtf, result.language, job.is_final,
+                    job.segment_id,
+                    duration,
+                    elapsed,
+                    rtf,
+                    result.language,
+                    job.is_final,
                 )
                 await self.send(transcript_message(job, text, result.language))
                 if job.is_final:
-                    self.track_translation(asyncio.create_task(self.translate_final(job, text, result.language)))
+                    self.track_translation(
+                        asyncio.create_task(
+                            self.translate_final(job, text, result.language)
+                        )
+                    )
             except Exception as error:
                 LOG.exception("ASR failed")
-                await self.send({"type": "error", "scope": "asr", "message": f"Transcription impossible : {error}"})
+                await self.send(
+                    {
+                        "type": "error",
+                        "scope": "asr",
+                        "message": f"Transcription impossible : {error}",
+                    }
+                )
             finally:
                 self.jobs.task_done()
 
@@ -211,37 +252,69 @@ class LiveSession:
                 queued_at = time.perf_counter()
                 async with self.app.state.translation_semaphore:
                     started = time.perf_counter()
-                    translated, stats = await translate(self.app.state.ollama, text, source, target, self.translation_model)
+                    translated, stats = await translate(
+                        self.app.state.ollama,
+                        text,
+                        source,
+                        target,
+                        self.translation_model,
+                    )
                 duration = time.perf_counter() - started
                 queue_wait = started - queued_at
                 LOG.info(
                     "Translation segment=%s target=%s model=%s queue=%.2fs request=%.2fs "
                     "ollama_total=%.2fs load=%.2fs prompt=%.2fs generation=%.2fs tokens=%s/%s",
-                    job.segment_id, target, self.translation_model, queue_wait, duration,
-                    stats.get("total_duration", 0) / 1e9, stats.get("load_duration", 0) / 1e9,
-                    stats.get("prompt_eval_duration", 0) / 1e9, stats.get("eval_duration", 0) / 1e9,
-                    stats.get("prompt_eval_count", 0), stats.get("eval_count", 0),
+                    job.segment_id,
+                    target,
+                    self.translation_model,
+                    queue_wait,
+                    duration,
+                    stats.get("total_duration", 0) / 1e9,
+                    stats.get("load_duration", 0) / 1e9,
+                    stats.get("prompt_eval_duration", 0) / 1e9,
+                    stats.get("eval_duration", 0) / 1e9,
+                    stats.get("prompt_eval_count", 0),
+                    stats.get("eval_count", 0),
                 )
-                await self.send(translation_message(job.segment_id, source, target, translated))
-                LOG.info("End-to-end segment=%s target=%s latency=%.2fs", job.segment_id, target, time.perf_counter() - job.created_at)
+                await self.send(
+                    translation_message(job.segment_id, source, target, translated)
+                )
+                LOG.info(
+                    "End-to-end segment=%s target=%s latency=%.2fs",
+                    job.segment_id,
+                    target,
+                    time.perf_counter() - job.created_at,
+                )
             except TranslationError as error:
-                await self.send({"type": "error", "scope": "translation", "segmentId": job.segment_id, "message": str(error)})
+                await self.send(
+                    {
+                        "type": "error",
+                        "scope": "translation",
+                        "segmentId": job.segment_id,
+                        "message": str(error),
+                    }
+                )
 
-        await asyncio.gather(*(one(target) for target in translation_targets(source, self.targets)))
+        await asyncio.gather(
+            *(one(target) for target in translation_targets(source, self.targets))
+        )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if ASR_BACKEND != "mlx":
-        raise RuntimeError("ASR_BACKEND doit etre `mlx` sur Apple Silicon.")
     app.state.asr_lock = asyncio.Lock()
-    app.state.asr = WhisperMLXEngine(WHISPER_MODEL)
+    app.state.asr = create_asr_engine(ASR_BACKEND, WHISPER_MODEL)
     app.state.translation_semaphore = asyncio.Semaphore(TRANSLATION_CONCURRENCY)
     async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=3)) as client:
         app.state.ollama = client
         started = time.perf_counter()
         await asyncio.to_thread(app.state.asr.warmup)
-        LOG.info("ASR backend=mlx model=%s warmed in %.2fs", WHISPER_MODEL, time.perf_counter() - started)
+        LOG.info(
+            "ASR backend=%s model=%s warmed in %.2fs",
+            ASR_BACKEND,
+            WHISPER_MODEL,
+            time.perf_counter() - started,
+        )
         try:
             installed = await ollama_models(client)
             if OLLAMA_MODEL not in installed:
@@ -258,18 +331,30 @@ app = FastAPI(title="NelsonMonfort", lifespan=lifespan)
 async def health():
     try:
         installed = await ollama_models(app.state.ollama)
-        ollama = {preset: details["model"] in installed for preset, details in TRANSLATION_PRESETS.items()}
+        ollama = {
+            preset: details["model"] in installed
+            for preset, details in TRANSLATION_PRESETS.items()
+        }
     except TranslationError:
         ollama = {preset: False for preset in TRANSLATION_PRESETS}
-    return {"asrBackend": ASR_BACKEND, "asrModel": app.state.asr.model_id, "ollama": ollama}
+    return {
+        "asrBackend": ASR_BACKEND,
+        "asrModel": app.state.asr.model_id,
+        "ollama": ollama,
+    }
 
 
 @app.get("/api/models")
 async def models():
     return {
         "default": WHISPER_MODEL,
-        "models": [{key: value for key, value in model.items() if key != "repository"} for model in ASR_MODELS],
-        "translationPresets": [{"id": key, **value} for key, value in TRANSLATION_PRESETS.items()],
+        "models": [
+            {key: value for key, value in model.items() if key != "repository"}
+            for model in ASR_MODELS
+        ],
+        "translationPresets": [
+            {"id": key, **value} for key, value in TRANSLATION_PRESETS.items()
+        ],
     }
 
 
@@ -287,13 +372,25 @@ async def transcribe_socket(websocket: WebSocket):
                     if command.get("type") == "configure":
                         await session.configure(command)
                 except (json.JSONDecodeError, ValueError) as error:
-                    await session.send({"type": "error", "scope": "configuration", "message": str(error)})
+                    await session.send(
+                        {
+                            "type": "error",
+                            "scope": "configuration",
+                            "message": str(error),
+                        }
+                    )
                 continue
             pcm = message.get("bytes")
             if not pcm or not session.targets:
                 continue
             if len(pcm) > FRAME_BYTES * 5:
-                await session.send({"type": "error", "scope": "audio", "message": "Paquet audio trop grand."})
+                await session.send(
+                    {
+                        "type": "error",
+                        "scope": "audio",
+                        "message": "Paquet audio trop grand.",
+                    }
+                )
                 continue
             for job in session.segmenter.feed(pcm):
                 await session.enqueue(job)
@@ -312,7 +409,9 @@ if dist.exists():
 
 def self_check():
     assert translation_targets("fr", ["fr", "en", "ja"]) == ["en", "ja"]
-    assert "Return only the translated text" in translation_prompt("Bonjour", "fr", "en")
+    assert "Return only the translated text" in translation_prompt(
+        "Bonjour", "fr", "en"
+    )
     assert trim_overlap("I want to go to", "to Japan tomorrow") == "Japan tomorrow"
 
 

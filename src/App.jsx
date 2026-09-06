@@ -27,8 +27,9 @@ export default function App() {
   const [error, setError] = useState('')
   const [segments, setSegments] = useState([])
   const [maxLines, setMaxLines] = useState(4)
+  const [fontScale, setFontScale] = useState(1)
   const [volume, setVolume] = useState(0)
-  const [threshold, setThreshold] = useState(0.008)
+  const [threshold, setThreshold] = useState(0.015)
   const socketRef = useRef(null)
   const streamRef = useRef(null)
   const contextRef = useRef(null)
@@ -90,6 +91,14 @@ export default function App() {
     socketRef.current = null
     setVolume(0)
     setStatus((current) => current === 'error' ? current : 'idle')
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {})
+    } else {
+      document.exitFullscreen().catch(() => {})
+    }
   }
 
   async function start() {
@@ -169,13 +178,55 @@ export default function App() {
   if (active) {
     return (
       <main className="dictation">
-        <section className="dictation-panel" aria-live="polite" style={{ gridTemplateRows: `repeat(${blocks.length}, minmax(0, 1fr))` }}>
-          <button className="dictation-stop" onClick={stop} type="button">Arreter</button>
+        <section
+          className="dictation-panel"
+          aria-live="polite"
+          style={{
+            gridTemplateRows: `repeat(${blocks.length}, minmax(0, 1fr))`,
+            '--block-count': blocks.length,
+            '--font-scale': fontScale,
+          }}
+        >
+          <nav className="dictation-controls" aria-label="Controles">
+            <button
+              className="dictation-btn"
+              onClick={() => setFontScale((s) => Math.max(0.7, Number((s - 0.1).toFixed(1))))}
+              title="Diminuer la taille du texte"
+              type="button"
+            >
+              A-
+            </button>
+            <button
+              className="dictation-btn"
+              onClick={() => setFontScale((s) => Math.min(1.8, Number((s + 0.1).toFixed(1))))}
+              title="Agrandir la taille du texte"
+              type="button"
+            >
+              A+
+            </button>
+            <button
+              className="dictation-btn"
+              onClick={toggleFullscreen}
+              title="Plein ecran"
+              type="button"
+            >
+              ⛶
+            </button>
+            <button
+              className="dictation-btn dictation-stop"
+              onClick={stop}
+              type="button"
+            >
+              Arreter
+            </button>
+          </nav>
           {blocks.map((block) => {
             const item = language(block.code)
             return <article className="language-block" key={block.code} lang={block.code}>
-              <span aria-hidden="true" className="flag">{item.flag}</span>
-              <p className="row-label">{item.name}</p>
+              <header className="block-header">
+                <span aria-hidden="true" className="flag">{item.flag}</span>
+                <span className="row-label">{item.name}</span>
+              </header>
               <div className="language-history" ref={(element) => { historyRefs.current[block.code] = element }}>
                 {block.text
                   ? <p className={block.partial ? 'partial' : ''}>{block.text}</p>
@@ -191,7 +242,7 @@ export default function App() {
             <b style={{ left: `${threshold / 0.05 * 100}%` }} />
           </div>
           <label>Seuil
-            <input aria-label="Seuil de filtrage microphone" max="0.05" min="0.001" onChange={changeThreshold} step="0.001" type="range" value={threshold} />
+            <input aria-label="Seuil de filtrage microphone" max="0.05" min="0.003" onChange={changeThreshold} step="0.001" type="range" value={threshold} />
           </label>
           <output>{(volume * 100).toFixed(1)}%</output>
         </footer>
