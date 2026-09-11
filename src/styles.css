@@ -34,13 +34,13 @@ fieldset legend { margin-bottom: 14px; }
   border-radius: 4px;
 }
 .language-block {
-  align-items: center;
+  align-items: stretch;
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
   padding: clamp(8px, 1.2vh, 18px) clamp(16px, 3.5vw, 64px);
-  text-align: center;
+  text-align: left;
 }
 .language-block + .language-block {
   border-top: 3px solid #171717;
@@ -49,7 +49,7 @@ fieldset legend { margin-bottom: 14px; }
   align-items: center;
   display: flex;
   gap: 8px;
-  justify-content: center;
+  justify-content: flex-start;
   margin-bottom: clamp(4px, 0.8vh, 10px);
   user-select: none;
 }
@@ -67,11 +67,11 @@ fieldset legend { margin-bottom: 14px; }
   text-transform: uppercase;
 }
 .language-history {
-  align-items: center;
+  align-items: stretch;
   display: flex;
   flex-direction: column;
   flex: 1;
-  justify-content: center;
+  justify-content: flex-start;
   min-height: 0;
   overflow-y: auto;
   scrollbar-color: #171717 #fff;
@@ -80,9 +80,9 @@ fieldset legend { margin-bottom: 14px; }
 .language-history p {
   /* Dynamically scales with block count, fontScale, and viewport */
   font-size: clamp(
-    20px,
+    calc(12px * var(--font-scale, 1)),
     calc((68vh / var(--block-count, 2) / 2.6) * var(--font-scale, 1)),
-    clamp(28px, 4.4vw, 68px)
+    calc(80px * var(--font-scale, 1))
   );
   line-height: 1.35;
   font-weight: 600;
@@ -100,7 +100,7 @@ fieldset legend { margin-bottom: 14px; }
   font-style: italic;
   font-size: clamp(16px, 1.6vw, 24px) !important;
   margin: 0 !important;
-  text-align: center;
+  text-align: left;
 }
 
 /* Controls */
@@ -192,7 +192,13 @@ fieldset legend { margin-bottom: 14px; }
   .dictation { padding: 8px; }
   .dictation-panel { border-width: 3px; }
   .language-block { padding: 10px 12px; }
-  .language-history p { font-size: clamp(18px, 5.5vw, 28px); }
+  .language-history p {
+    font-size: clamp(
+      calc(12px * var(--font-scale, 1)),
+      calc(5.5vw * var(--font-scale, 1)),
+      calc(48px * var(--font-scale, 1))
+    );
+  }
   .live-meter { flex-wrap: wrap; }
   .meter-track { min-width: 100%; order: 3; }
   .live-meter label { flex: 1; justify-content: space-between; }

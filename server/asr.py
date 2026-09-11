@@ -124,7 +124,7 @@ class WhisperFasterEngine(ASREngine):
             temperature=0,
             condition_on_previous_text=False,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=400),
+            vad_parameters=dict(min_silence_duration_ms=200),
         )
         text = "".join(segment.text for segment in segments).strip()
         if getattr(info, "no_speech_prob", 0) > 0.6:

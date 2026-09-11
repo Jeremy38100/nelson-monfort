@@ -41,6 +41,8 @@ WHISPER_MODEL = os.getenv("WHISPER_MODEL", "large-v3-turbo")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "translategemma:4b")
 OLLAMA_QUALITY_MODEL = os.getenv("OLLAMA_QUALITY_MODEL", "translategemma:4b")
 OLLAMA_QWEN_4B_MODEL = os.getenv("OLLAMA_QWEN_4B_MODEL", "qwen3.5:4b")
+OLLAMA_QWEN_4B_MLX_MODEL = os.getenv("OLLAMA_QWEN_4B_MLX_MODEL", "qwen3.5:4b-mlx")
+OLLAMA_QWEN_MLX_MODEL = os.getenv("OLLAMA_QWEN_MLX_MODEL", "qwen3.5:0.8b-mlx")
 OLLAMA_QWEN_MODEL = os.getenv("OLLAMA_QWEN_MODEL", "qwen3:0.6b")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 TRANSLATION_CONCURRENCY = int(os.getenv("TRANSLATION_CONCURRENCY", "1"))
@@ -48,6 +50,8 @@ TRANSLATION_PRESETS = {
     "fast": {"label": "TranslateGemma 4B", "model": OLLAMA_MODEL},
     "quality": {"label": "Quality (Gemma 4B)", "model": OLLAMA_QUALITY_MODEL},
     "qwen-4b": {"label": "Qwen 3.5 4B", "model": OLLAMA_QWEN_4B_MODEL},
+    "qwen-4b-mlx": {"label": "Qwen 3.5 4B MLX", "model": OLLAMA_QWEN_4B_MLX_MODEL},
+    "qwen-mlx": {"label": "Qwen 3.5 0.8B MLX", "model": OLLAMA_QWEN_MLX_MODEL},
     "qwen": {"label": "Qwen 3 (0.6B Ultra-rapide)", "model": OLLAMA_QWEN_MODEL},
 }
 

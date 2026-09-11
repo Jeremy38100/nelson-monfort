@@ -38,6 +38,9 @@ Pull Ollama models:
 ollama pull qwen3:0.6b
 # Optional:
 ollama pull translategemma:4b
+
+# MLX Model (MacOS only)
+ollama pull qwen3.5:0.8b-mlx
 ```
 
 The default ASR model is `large-v3-turbo` (`mlx-community/whisper-large-v3-turbo` on macOS MLX, or `Systran/faster-whisper-large-v3-turbo` on Windows/CUDA). It is downloaded locally on the first backend start and stored in the Hugging Face cache. This public model does not require a Hugging Face token.

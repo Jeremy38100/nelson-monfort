@@ -18,7 +18,7 @@ const LANGUAGES = [
 const language = (code) => LANGUAGES.find((item) => item.code === code)
 
 export default function App() {
-  const [targets, setTargets] = useState(['fr', 'en', 'ja'])
+  const [targets, setTargets] = useState(['fr', 'en'])
   const [model, setModel] = useState('large-v3-turbo')
   const [translationPreset, setTranslationPreset] = useState('fast')
   const [models, setModels] = useState([])
@@ -51,8 +51,9 @@ export default function App() {
   useEffect(() => () => stop(), [])
 
   useEffect(() => {
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
     Object.values(historyRefs.current).forEach((history) => {
-      if (history) history.scrollTop = history.scrollHeight
+      if (history) history.scrollTo({ top: history.scrollHeight, behavior })
     })
   }, [segments])
 
@@ -190,7 +191,7 @@ export default function App() {
           <nav className="dictation-controls" aria-label="Controles">
             <button
               className="dictation-btn"
-              onClick={() => setFontScale((s) => Math.max(0.7, Number((s - 0.1).toFixed(1))))}
+              onClick={() => setFontScale((s) => Math.max(0.5, Number((s - 0.1).toFixed(1))))}
               title="Diminuer la taille du texte"
               type="button"
             >
@@ -198,7 +199,7 @@ export default function App() {
             </button>
             <button
               className="dictation-btn"
-              onClick={() => setFontScale((s) => Math.min(1.8, Number((s + 0.1).toFixed(1))))}
+              onClick={() => setFontScale((s) => Math.min(3, Number((s + 0.1).toFixed(1))))}
               title="Agrandir la taille du texte"
               type="button"
             >
