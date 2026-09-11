@@ -388,8 +388,9 @@ async def models():
     return {
         "default": WHISPER_MODEL,
         "models": [
-            {key: value for key, value in model.items() if key != "repository"}
+            {key: value for key, value in model.items() if key not in ("repository", "engine")}
             for model in ASR_MODELS
+            if ASR_BACKEND == "mlx" or model["engine"] == "whisper"
         ],
         "translationPresets": [
             {"id": key, **value} for key, value in TRANSLATION_PRESETS.items()

@@ -52,11 +52,18 @@ export default function App() {
   useEffect(() => () => stop(), [])
 
   useLayoutEffect(() => {
-    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     Object.entries(historyRefs.current).forEach(([code, history]) => {
       const previousHeight = historyHeightsRef.current[code] ?? history.scrollHeight
       if (history.scrollHeight > previousHeight && history.scrollHeight > history.clientHeight) {
-        history.scrollTo({ top: history.scrollHeight, behavior })
+        const distance = history.scrollHeight - history.clientHeight - history.scrollTop
+        if (distance > 0) {
+          history.scrollTop += distance
+          if (!reducedMotion) history.firstElementChild?.animate(
+            [{ transform: `translateY(${distance}px)` }, { transform: 'translateY(0)' }],
+            { duration: 180, easing: 'ease-out' },
+          )
+        }
       }
       historyHeightsRef.current[code] = history.scrollHeight
     })

@@ -165,6 +165,8 @@ class PipelineTests(unittest.TestCase):
             create_asr_engine("unknown_backend", "small")
         with self.assertRaises(ValueError):
             create_asr_engine("faster-whisper", "unknown_model")
+        with self.assertRaises(ValueError):
+            create_asr_engine("faster-whisper", "qwen3-asr-1.7b")
 
 
 if __name__ == "__main__":

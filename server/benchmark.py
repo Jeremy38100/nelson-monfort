@@ -2,7 +2,7 @@ import argparse
 import time
 import wave
 
-from server.asr import SAMPLE_RATE, WhisperMLXEngine
+from server.asr import SAMPLE_RATE, create_asr_engine
 
 
 def pcm_from_wav(path: str) -> bytes:
@@ -16,7 +16,7 @@ def benchmark(path: str, models: list[str]) -> None:
     pcm = pcm_from_wav(path)
     duration = len(pcm) / (SAMPLE_RATE * 2)
     for model in models:
-        engine = WhisperMLXEngine(model)
+        engine = create_asr_engine("mlx", model)
         engine.warmup()
         started = time.perf_counter()
         result = engine.transcribe(pcm)
@@ -28,8 +28,8 @@ def benchmark(path: str, models: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Compare local MLX Whisper models on one WAV file.")
+    parser = argparse.ArgumentParser(description="Compare local MLX ASR models on one WAV file.")
     parser.add_argument("audio", help="WAV mono PCM16 16 kHz")
-    parser.add_argument("--models", default="small,large-v3-turbo", help="Comma-separated ASR model IDs")
+    parser.add_argument("--models", default="large-v3-turbo,large-v3,qwen3-asr-1.7b", help="Comma-separated ASR model IDs")
     args = parser.parse_args()
     benchmark(args.audio, args.models.split(","))

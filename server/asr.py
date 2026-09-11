@@ -29,6 +29,11 @@ try:
 except ImportError:
     mlx_whisper = None
 
+try:
+    from mlx_audio.stt import load as mlx_audio_load
+except ImportError:
+    mlx_audio_load = None
+
 SAMPLE_RATE = 16_000
 ASR_MODELS = [
     {
@@ -36,15 +41,44 @@ ASR_MODELS = [
         "label": "Whisper Small",
         "repository": "mlx-community/whisper-small",
         "description": "Plus rapide",
+        "engine": "whisper",
     },
     {
         "id": "large-v3-turbo",
         "label": "Whisper Large v3 Turbo",
         "repository": "mlx-community/whisper-large-v3-turbo",
         "description": "Meilleure qualite multilingue",
+        "engine": "whisper",
+    },
+    {
+        "id": "large-v3",
+        "label": "Whisper Large v3",
+        "repository": "mlx-community/whisper-large-v3-mlx",
+        "description": "Plus precis, plus lent",
+        "engine": "whisper",
+    },
+    {
+        "id": "qwen3-asr-1.7b",
+        "label": "Qwen3 ASR 1.7B",
+        "repository": "mlx-community/Qwen3-ASR-1.7B-8bit",
+        "description": "Qualite multilingue recente",
+        "engine": "qwen",
     },
 ]
-ASR_MODEL_IDS = {model["id"] for model in ASR_MODELS}
+QWEN_LANGUAGE_CODES = {
+    "Arabic": "ar",
+    "Chinese": "zh",
+    "English": "en",
+    "French": "fr",
+    "German": "de",
+    "Italian": "it",
+    "Japanese": "ja",
+    "Korean": "ko",
+    "Portuguese": "pt",
+    "Russian": "ru",
+    "Spanish": "es",
+    "Dutch": "nl",
+}
 
 HALLUCINATIONS = {
     "thank you",
@@ -87,10 +121,17 @@ class ASREngine(ABC):
     def transcribe(self, pcm: bytes) -> ASRResult: ...
 
 
+def asr_model(model_id: str) -> dict:
+    model = next((model for model in ASR_MODELS if model["id"] == model_id), None)
+    if model is None:
+        raise ValueError(f"Modele ASR non pris en charge : {model_id}")
+    return model
+
+
 class WhisperFasterEngine(ASREngine):
     def __init__(self, model_id: str, device: str = None, compute_type: str = None):
-        if model_id not in ASR_MODEL_IDS:
-            raise ValueError(f"Modele ASR non pris en charge : {model_id}")
+        if asr_model(model_id)["engine"] != "whisper":
+            raise ValueError(f"Modele ASR incompatible avec faster-whisper : {model_id}")
         if WhisperModel is None:
             raise RuntimeError("faster-whisper n'est pas installe.")
         self.model_id = model_id
@@ -140,14 +181,13 @@ class WhisperFasterEngine(ASREngine):
 
 class WhisperMLXEngine(ASREngine):
     def __init__(self, model_id: str):
-        if model_id not in ASR_MODEL_IDS:
-            raise ValueError(f"Modele ASR non pris en charge : {model_id}")
+        model = asr_model(model_id)
+        if model["engine"] != "whisper":
+            raise ValueError(f"Modele ASR incompatible avec mlx-whisper : {model_id}")
         if mlx_whisper is None:
             raise RuntimeError("mlx-whisper n'est pas disponible sur ce systeme.")
         self.model_id = model_id
-        self.repository = next(
-            model["repository"] for model in ASR_MODELS if model["id"] == model_id
-        )
+        self.repository = model["repository"]
 
     def warmup(self) -> None:
         # mlx-whisper owns a process-wide model cache keyed by this repository.
@@ -182,10 +222,40 @@ class WhisperMLXEngine(ASREngine):
         return ASRResult(text=text, language=result["language"])
 
 
+class QwenMLXEngine(ASREngine):
+    def __init__(self, model_id: str):
+        model = asr_model(model_id)
+        if model["engine"] != "qwen":
+            raise ValueError(f"Modele ASR incompatible avec Qwen : {model_id}")
+        if mlx_audio_load is None:
+            raise RuntimeError("mlx-audio n'est pas disponible sur ce systeme.")
+        self.model_id = model_id
+        self.repository = model["repository"]
+        self.model = None
+
+    def warmup(self) -> None:
+        self.model = mlx_audio_load(self.repository)
+        self.transcribe(np.zeros(SAMPLE_RATE, dtype=np.int16).tobytes())
+
+    def transcribe(self, pcm: bytes) -> ASRResult:
+        if self.model is None:
+            self.model = mlx_audio_load(self.repository)
+        audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        result = self.model.generate(audio, language=None, max_tokens=256)
+        language = result.language[0] if isinstance(result.language, list) else result.language
+        text = result.text.strip()
+        duration = len(pcm) / 32_000
+        clean_text = text.lower().strip().rstrip(".,!?")
+        if clean_text in HALLUCINATIONS and duration < 2.0:
+            return ASRResult(text="", language=QWEN_LANGUAGE_CODES.get(str(language).title(), "fr"))
+        return ASRResult(text=text, language=QWEN_LANGUAGE_CODES.get(str(language).title(), "fr"))
+
+
 def create_asr_engine(backend: str, model_id: str) -> ASREngine:
+    model = asr_model(model_id)
     if backend in ("faster-whisper", "faster"):
         return WhisperFasterEngine(model_id)
     elif backend == "mlx":
-        return WhisperMLXEngine(model_id)
+        return QwenMLXEngine(model_id) if model["engine"] == "qwen" else WhisperMLXEngine(model_id)
     else:
         raise ValueError(f"Backend ASR inconnu ou non pris en charge : {backend}")
