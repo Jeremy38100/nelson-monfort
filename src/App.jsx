@@ -35,7 +35,7 @@ export default function App() {
   const contextRef = useRef(null)
   const workletRef = useRef(null)
   const historyRefs = useRef({})
-  const historyHeightsRef = useRef({})
+  const historyLayoutsRef = useRef({})
   const lastVolumeUpdateRef = useRef(0)
 
   useEffect(() => {
@@ -54,20 +54,37 @@ export default function App() {
   useLayoutEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     Object.entries(historyRefs.current).forEach(([code, history]) => {
-      const previousHeight = historyHeightsRef.current[code] ?? history.scrollHeight
-      if (history.scrollHeight > previousHeight && history.scrollHeight > history.clientHeight) {
-        const distance = history.scrollHeight - history.clientHeight - history.scrollTop
-        if (distance > 0) {
-          history.scrollTop += distance
-          if (!reducedMotion) history.firstElementChild?.animate(
-            [{ transform: `translateY(${distance}px)` }, { transform: 'translateY(0)' }],
-            { duration: 180, easing: 'ease-out' },
+      history.scrollTop = history.scrollHeight
+      const previous = historyLayoutsRef.current[code] ?? {}
+      const lines = [...history.querySelectorAll('[data-segment-id]')]
+      const layout = Object.fromEntries(lines.map((line) => {
+        const { top, height } = line.getBoundingClientRect()
+        return [line.dataset.segmentId, { top, height }]
+      }))
+      if (!reducedMotion) lines.forEach((line) => {
+        const before = previous[line.dataset.segmentId]
+        const after = layout[line.dataset.segmentId]
+        if (!before) {
+          const opacity = getComputedStyle(line).opacity
+          line.animate(
+            [{ opacity: 0, transform: 'translateY(0.2em)' }, { opacity, transform: 'translateY(0)' }],
+            { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
           )
+          return
         }
-      }
-      historyHeightsRef.current[code] = history.scrollHeight
+        const distance = before.top - after.top
+        if (Math.abs(distance) > 1) line.animate(
+          [{ transform: `translateY(${distance}px)` }, { transform: 'translateY(0)' }],
+          { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+        )
+        if (after.height > before.height) line.animate(
+          [{ clipPath: `inset(0 0 ${after.height - before.height}px)` }, { clipPath: 'inset(0)' }],
+          { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+        )
+      })
+      historyLayoutsRef.current[code] = layout
     })
-  }, [segments])
+  }, [segments, fontScale])
 
   function toggleLanguage(code) {
     setTargets((current) => current.includes(code)
@@ -121,6 +138,7 @@ export default function App() {
     }
     setError('')
     setSegments([])
+    historyLayoutsRef.current = {}
     setStatus('connecting')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } })
@@ -176,16 +194,15 @@ export default function App() {
   const active = ['connecting', 'listening'].includes(status)
   const blocks = targets.map((code) => ({
     code,
-    lines: segments.map((segment) => ({
-      text: segment.language === code
-        ? segment.text
-        : segment.translations[code]?.text ?? (segment.isFinal ? 'Traduction...' : ''),
-      partial: !segment.isFinal || segment.translations[code]?.isFinal === false,
-    })).filter((line) => line.text),
-  })).map((block) => ({
-    ...block,
-    text: block.lines.map((line) => line.text).join(' '),
-    partial: block.lines.at(-1)?.partial,
+    lines: segments.map((segment) => {
+      const translation = segment.translations[code]
+      const source = segment.language === code
+      return {
+        id: segment.id,
+        text: source ? segment.text : translation?.text ?? (segment.isFinal ? 'Traduction...' : ''),
+        partial: source ? !segment.isFinal : !translation?.isFinal,
+      }
+    }).filter((line) => line.text),
   }))
 
   if (active) {
@@ -241,8 +258,8 @@ export default function App() {
                 <span className="row-label">{item.name}</span>
               </header>
               <div className="language-history" ref={(element) => { historyRefs.current[block.code] = element }}>
-                {block.text
-                  ? <p className={block.partial ? 'partial' : ''}>{block.text}</p>
+                {block.lines.length
+                  ? block.lines.map((line) => <p className={`transcript-line${line.partial ? ' partial' : ''}`} data-segment-id={line.id} key={line.id}>{line.text}</p>)
                   : <p className="waiting">En attente...</p>}
               </div>
             </article>

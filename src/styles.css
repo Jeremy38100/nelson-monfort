@@ -88,8 +88,10 @@ fieldset legend { margin-bottom: 14px; }
   letter-spacing: normal;
   margin: 0;
   max-width: 100%;
+  transform-origin: top left;
   word-break: break-word;
 }
+.transcript-line { transition: opacity .24s ease-out; }
 .language-history .partial {
   opacity: .7;
 }
