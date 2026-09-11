@@ -5,6 +5,7 @@ import httpx
 
 from server.app import (
     TranslationError,
+    LiveSession,
     transcript_message,
     translate,
     translation_message,
@@ -45,6 +46,14 @@ class SuccessfulOllama:
         return SuccessfulResponse()
 
 
+class RecordingSocket:
+    def __init__(self):
+        self.messages = []
+
+    async def send_json(self, payload):
+        self.messages.append(payload)
+
+
 class PipelineTests(unittest.TestCase):
     def test_target_selection_skips_source(self):
         self.assertEqual(translation_targets("fr", ["fr", "en", "ja"]), ["en", "ja"])
@@ -67,16 +76,47 @@ class PipelineTests(unittest.TestCase):
             transcript_message(final, "I want to go", "en")["type"], "transcript.final"
         )
         self.assertEqual(
-            translation_message("42", "en", "ja", "日本に行きたいです。"),
+            translation_message("42", "en", "ja", "日本に行きたいです。", False),
             {
                 "type": "translation",
                 "segmentId": "42",
                 "sourceLanguage": "en",
                 "targetLanguage": "ja",
                 "text": "日本に行きたいです。",
-                "isFinal": True,
+                "isFinal": False,
             },
         )
+
+    def test_new_translation_cancels_the_previous_segment_request(self):
+        async def run():
+            session = LiveSession(None, None)
+            first = asyncio.create_task(asyncio.sleep(60))
+            session.track_translation("42", first)
+            second = asyncio.create_task(asyncio.sleep(0))
+            session.track_translation("42", second)
+            await asyncio.sleep(0)
+            self.assertTrue(first.cancelled())
+            self.assertIs(session.translation_tasks_by_segment["42"], second)
+            await second
+
+        asyncio.run(run())
+
+    def test_stale_translation_is_not_sent(self):
+        async def run():
+            socket = RecordingSocket()
+            session = LiveSession(None, socket)
+            session.translation_revisions["42"] = 2
+            sent = await session.send_translation(
+                AudioJob("42", b"", False, False, 0),
+                "en",
+                "ja",
+                "日本に行きたいです。",
+                1,
+            )
+            self.assertFalse(sent)
+            self.assertEqual(socket.messages, [])
+
+        asyncio.run(run())
 
     def test_source_language_can_change_between_segments(self):
         first = transcript_message(AudioJob("1", b"", True, False, 0), "Bonjour", "fr")

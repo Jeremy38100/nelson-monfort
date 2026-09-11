@@ -67,7 +67,7 @@ Whisper detects the source language independently for each finalized segment. No
 | `Qwen 3.5 MLX` | `qwen3.5:0.8b-mlx` | Lowest latency, lower translation quality |
 | `Qwen 3` | `qwen3:0.6b` | Lowest latency, lower translation quality |
 
-Translation only starts for a finalized ASR segment. The detected source language is displayed directly, so no unnecessary `fr -> fr`, `en -> en`, or `ja -> ja` Ollama request is made. Ollama thinking is explicitly disabled and models stay loaded for 30 minutes after use.
+Each ASR partial starts a provisional translation, which is replaced by the final translation when the segment ends. An obsolete request for the same segment is canceled, so it cannot overwrite newer text. The detected source language is displayed directly, so no unnecessary `fr -> fr`, `en -> en`, or `ja -> ja` Ollama request is made. Ollama thinking is explicitly disabled and models stay loaded for 30 minutes after use.
 
 ## Development
 
@@ -133,7 +133,7 @@ Microphone getUserMedia
   -> WebRTC VAD (20 ms frames, 500 ms end-of-utterance pause)
   -> Whisper Large v3 Turbo / MLX / Metal
   -> transcript.partial or transcript.final
-  -> TranslateGemma or Qwen / Ollama for finals only
+  -> TranslateGemma or Qwen / Ollama for partials and finals
   -> WebSocket
   -> UI
 ```
@@ -146,6 +146,7 @@ The VAD keeps 300 ms of pre-roll. Continuous speech is capped at eight seconds a
 
 ```json
 {"type":"transcript.partial","segmentId":"3","text":"I want to go","language":"en","isFinal":false}
+{"type":"translation","segmentId":"3","sourceLanguage":"en","targetLanguage":"ja","text":"日本に行きたいです","isFinal":false}
 {"type":"transcript.final","segmentId":"3","text":"I want to go to Japan.","language":"en","isFinal":true}
 {"type":"translation","segmentId":"3","sourceLanguage":"en","targetLanguage":"ja","text":"日本に行きたいです。","isFinal":true}
 ```

@@ -88,14 +88,16 @@ def transcript_message(job: AudioJob, text: str, language: str) -> dict:
     }
 
 
-def translation_message(segment_id: str, source: str, target: str, text: str) -> dict:
+def translation_message(
+    segment_id: str, source: str, target: str, text: str, is_final: bool
+) -> dict:
     return {
         "type": "translation",
         "segmentId": segment_id,
         "sourceLanguage": source,
         "targetLanguage": target,
         "text": text,
-        "isFinal": True,
+        "isFinal": is_final,
     }
 
 
@@ -170,14 +172,42 @@ class LiveSession:
         self.send_lock = asyncio.Lock()
         self.previous_final = ""
         self.translation_tasks: set[asyncio.Task] = set()
+        self.translation_tasks_by_segment: dict[str, asyncio.Task] = {}
+        self.translation_revisions: dict[str, int] = {}
 
     async def send(self, payload: dict) -> None:
         async with self.send_lock:
             await self.websocket.send_json(payload)
 
-    def track_translation(self, task: asyncio.Task) -> None:
+    def track_translation(self, segment_id: str, task: asyncio.Task) -> None:
+        if previous := self.translation_tasks_by_segment.get(segment_id):
+            previous.cancel()
+        self.translation_tasks_by_segment[segment_id] = task
         self.translation_tasks.add(task)
-        task.add_done_callback(self.translation_tasks.discard)
+
+        def finished(completed: asyncio.Task) -> None:
+            self.translation_tasks.discard(completed)
+            if self.translation_tasks_by_segment.get(segment_id) is completed:
+                self.translation_tasks_by_segment.pop(segment_id, None)
+                self.translation_revisions.pop(segment_id, None)
+
+        task.add_done_callback(finished)
+
+    async def send_translation(
+        self,
+        job: AudioJob,
+        source: str,
+        target: str,
+        text: str,
+        revision: int,
+    ) -> bool:
+        async with self.send_lock:
+            if self.translation_revisions.get(job.segment_id) != revision:
+                return False
+            await self.websocket.send_json(
+                translation_message(job.segment_id, source, target, text, job.is_final)
+            )
+            return True
 
     async def configure(self, command: dict) -> None:
         requested_model = command.get("model", WHISPER_MODEL)
@@ -232,12 +262,14 @@ class LiveSession:
                     job.is_final,
                 )
                 await self.send(transcript_message(job, text, result.language))
-                if job.is_final:
-                    self.track_translation(
-                        asyncio.create_task(
-                            self.translate_final(job, text, result.language)
-                        )
+                revision = self.translation_revisions.get(job.segment_id, 0) + 1
+                self.translation_revisions[job.segment_id] = revision
+                self.track_translation(
+                    job.segment_id,
+                    asyncio.create_task(
+                        self.translate_segment(job, text, result.language, revision)
                     )
+                )
             except Exception as error:
                 LOG.exception("ASR failed")
                 await self.send(
@@ -250,7 +282,9 @@ class LiveSession:
             finally:
                 self.jobs.task_done()
 
-    async def translate_final(self, job: AudioJob, text: str, source: str) -> None:
+    async def translate_segment(
+        self, job: AudioJob, text: str, source: str, revision: int
+    ) -> None:
         async def one(target: str) -> None:
             try:
                 queued_at = time.perf_counter()
@@ -280,24 +314,25 @@ class LiveSession:
                     stats.get("prompt_eval_count", 0),
                     stats.get("eval_count", 0),
                 )
-                await self.send(
-                    translation_message(job.segment_id, source, target, translated)
-                )
-                LOG.info(
-                    "End-to-end segment=%s target=%s latency=%.2fs",
-                    job.segment_id,
-                    target,
-                    time.perf_counter() - job.created_at,
-                )
+                if await self.send_translation(
+                    job, source, target, translated, revision
+                ):
+                    LOG.info(
+                        "End-to-end segment=%s target=%s latency=%.2fs",
+                        job.segment_id,
+                        target,
+                        time.perf_counter() - job.created_at,
+                    )
             except TranslationError as error:
-                await self.send(
-                    {
-                        "type": "error",
-                        "scope": "translation",
-                        "segmentId": job.segment_id,
-                        "message": str(error),
-                    }
-                )
+                if self.translation_revisions.get(job.segment_id) == revision:
+                    await self.send(
+                        {
+                            "type": "error",
+                            "scope": "translation",
+                            "segmentId": job.segment_id,
+                            "message": str(error),
+                        }
+                    )
 
         await asyncio.gather(
             *(one(target) for target in translation_targets(source, self.targets))

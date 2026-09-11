@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 const LANGUAGES = [
   { code: 'fr', name: 'Francais', flag: '🇫🇷' },
@@ -35,6 +35,7 @@ export default function App() {
   const contextRef = useRef(null)
   const workletRef = useRef(null)
   const historyRefs = useRef({})
+  const historyHeightsRef = useRef({})
   const lastVolumeUpdateRef = useRef(0)
 
   useEffect(() => {
@@ -50,10 +51,14 @@ export default function App() {
 
   useEffect(() => () => stop(), [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
-    Object.values(historyRefs.current).forEach((history) => {
-      if (history) history.scrollTo({ top: history.scrollHeight, behavior })
+    Object.entries(historyRefs.current).forEach(([code, history]) => {
+      const previousHeight = historyHeightsRef.current[code] ?? history.scrollHeight
+      if (history.scrollHeight > previousHeight && history.scrollHeight > history.clientHeight) {
+        history.scrollTo({ top: history.scrollHeight, behavior })
+      }
+      historyHeightsRef.current[code] = history.scrollHeight
     })
   }, [segments])
 
@@ -131,7 +136,7 @@ export default function App() {
         }
         if (message.type === 'translation') {
           setSegments((current) => current.map((segment) => segment.id === message.segmentId
-            ? { ...segment, translations: { ...segment.translations, [message.targetLanguage]: message.text } }
+            ? { ...segment, translations: { ...segment.translations, [message.targetLanguage]: { text: message.text, isFinal: message.isFinal } } }
             : segment))
         }
         if (message.type === 'error') setError(message.message)
@@ -167,8 +172,8 @@ export default function App() {
     lines: segments.map((segment) => ({
       text: segment.language === code
         ? segment.text
-        : segment.isFinal ? segment.translations[code] ?? 'Traduction...' : '',
-      partial: !segment.isFinal,
+        : segment.translations[code]?.text ?? (segment.isFinal ? 'Traduction...' : ''),
+      partial: !segment.isFinal || segment.translations[code]?.isFinal === false,
     })).filter((line) => line.text),
   })).map((block) => ({
     ...block,
