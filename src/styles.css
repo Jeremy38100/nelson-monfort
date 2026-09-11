@@ -30,6 +30,7 @@ fieldset legend { margin-bottom: 14px; }
   min-height: 0;
   overflow: hidden;
   position: relative;
+  transition: grid-template-rows .36s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .language-block {
   align-items: stretch;
@@ -39,18 +40,30 @@ fieldset legend { margin-bottom: 14px; }
   overflow: hidden;
   padding: clamp(4px, 0.7vh, 10px) clamp(8px, 1.2vw, 24px);
   text-align: left;
+  transition: border-color .24s ease-out, opacity .24s ease-out, padding .36s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .language-block + .language-block {
   border-top: 1px solid #171717;
 }
+.language-block.source-hidden {
+  border-top-color: transparent;
+}
+.language-block.source-hidden + .language-block { border-top-color: transparent; }
 .block-header {
   align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
   display: flex;
   gap: 8px;
   justify-content: flex-start;
   margin-bottom: clamp(2px, 0.4vh, 6px);
+  padding: 0;
+  text-align: left;
   user-select: none;
 }
+.language-block.source-hidden .language-history { display: none; }
 .flag {
   font-family: system-ui, sans-serif;
   font-size: clamp(18px, 2vw, 26px);

@@ -30,6 +30,7 @@ export default function App() {
   const [fontScale, setFontScale] = useState(1)
   const [volume, setVolume] = useState(0)
   const [threshold, setThreshold] = useState(0.015)
+  const [hiddenLanguages, setHiddenLanguages] = useState([])
   const socketRef = useRef(null)
   const streamRef = useRef(null)
   const contextRef = useRef(null)
@@ -57,10 +58,7 @@ export default function App() {
       history.scrollTop = history.scrollHeight
       const previous = historyLayoutsRef.current[code] ?? {}
       const lines = [...history.querySelectorAll('[data-segment-id]')]
-      const layout = Object.fromEntries(lines.map((line) => {
-        const { top, height } = line.getBoundingClientRect()
-        return [line.dataset.segmentId, { top, height }]
-      }))
+      const layout = measureHistory(code, history)
       if (!reducedMotion) lines.forEach((line) => {
         const before = previous[line.dataset.segmentId]
         const after = layout[line.dataset.segmentId]
@@ -82,13 +80,27 @@ export default function App() {
           { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
         )
       })
-      historyLayoutsRef.current[code] = layout
     })
-  }, [segments, fontScale])
+  }, [segments, fontScale, hiddenLanguages])
+
+  function measureHistory(code, history) {
+    const layout = Object.fromEntries([...history.querySelectorAll('[data-segment-id]')].map((line) => {
+      const { top, height } = line.getBoundingClientRect()
+      return [line.dataset.segmentId, { top, height }]
+    }))
+    historyLayoutsRef.current[code] = layout
+    return layout
+  }
 
   function toggleLanguage(code) {
     setTargets((current) => current.includes(code)
       ? current.filter((target) => target !== code)
+      : [...current, code])
+  }
+
+  function toggleLanguageVisibility(code) {
+    setHiddenLanguages((current) => current.includes(code)
+      ? current.filter((languageCode) => languageCode !== code)
       : [...current, code])
   }
 
@@ -139,6 +151,7 @@ export default function App() {
     setError('')
     setSegments([])
     historyLayoutsRef.current = {}
+    setHiddenLanguages([])
     setStatus('connecting')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } })
@@ -212,9 +225,16 @@ export default function App() {
           className="dictation-panel"
           aria-live="polite"
           style={{
-            gridTemplateRows: `repeat(${blocks.length}, minmax(0, 1fr))`,
+            gridTemplateRows: blocks.map((block) => hiddenLanguages.includes(block.code) ? 'auto' : 'minmax(0, 1fr)').join(' '),
             '--block-count': blocks.length,
             '--font-scale': fontScale,
+          }}
+          onTransitionEnd={(event) => {
+            if (event.target === event.currentTarget && event.propertyName === 'grid-template-rows') {
+              Object.entries(historyRefs.current).forEach(([code, history]) => {
+                if (history) measureHistory(code, history)
+              })
+            }
           }}
         >
           <nav className="dictation-controls" aria-label="Controles">
@@ -252,12 +272,13 @@ export default function App() {
           </nav>
           {blocks.map((block) => {
             const item = language(block.code)
-            return <article className="language-block" key={block.code} lang={block.code}>
-              <header className="block-header">
+            const hidden = hiddenLanguages.includes(block.code)
+            return <article className={`language-block${hidden ? ' source-hidden' : ''}`} key={block.code} lang={block.code}>
+              <button aria-expanded={!hidden} className="block-header" onClick={() => toggleLanguageVisibility(block.code)} type="button">
                 <span aria-hidden="true" className="flag">{item.flag}</span>
                 <span className="row-label">{item.name}</span>
-              </header>
-              <div className="language-history" ref={(element) => { historyRefs.current[block.code] = element }}>
+              </button>
+              <div className="language-history" ref={(element) => { historyRefs.current[block.code] = element }} aria-hidden={hidden}>
                 {block.lines.length
                   ? block.lines.map((line) => <p className={`transcript-line${line.partial ? ' partial' : ''}`} data-segment-id={line.id} key={line.id}>{line.text}</p>)
                   : <p className="waiting">En attente...</p>}
